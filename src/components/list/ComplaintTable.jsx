@@ -127,11 +127,11 @@ export function ComplaintTable({ complaints, selectedComplaint, onSelectComplain
                 </td>
               </tr>
             ) : (
-              pageComplaints.map((complaint) => {
-                const isSelected = selectedComplaint?.id === complaint.id;
+              pageComplaints.map((complaint, idx) => {
+                const isSelected = selectedComplaint?.id === complaint.id || selectedComplaint?.tracking_id === complaint.tracking_id;
                 return (
                   <tr
-                    key={complaint.id}
+                    key={complaint.id || complaint.tracking_id || `complaint-${idx}`}
                     onClick={() => onSelectComplaint(complaint)}
                     className={`
                       cursor-pointer transition-colors
