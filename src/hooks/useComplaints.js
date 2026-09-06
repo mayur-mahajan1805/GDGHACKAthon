@@ -64,19 +64,53 @@ export function useComplaints() {
           return; // wait for the next snapshot with real data
         }
 
-        setComplaints(enrichWithPriority(docs));
+        // Merge with local complaints if any exist
+        let merged = [...docs];
+        try {
+          const local = JSON.parse(localStorage.getItem('v2a_citizen_complaints') || '[]');
+          const docIds = new Set(docs.map(d => d.tracking_id || d.id));
+          const unsynced = local.filter(l => !docIds.has(l.tracking_id));
+          merged = [...unsynced, ...docs];
+        } catch (e) {
+          // ignore
+        }
+
+        setComplaints(enrichWithPriority(merged));
         setLoading(false);
         setSeeding(false);
         seedingRef.current = false;
       },
       (err) => {
-        console.error('[Voice2Action] Firestore error:', err);
+        console.warn('[Voice2Action] Firestore permission/network error, activating local data fallback:', err);
         setError(err.message);
+        try {
+          const local = JSON.parse(localStorage.getItem('v2a_citizen_complaints') || '[]');
+          const combined = [...local, ...SAMPLE_COMPLAINTS];
+          setComplaints(enrichWithPriority(combined));
+        } catch (e) {
+          setComplaints(enrichWithPriority(SAMPLE_COMPLAINTS));
+        }
         setLoading(false);
       }
     );
 
-    return unsubscribe;
+    // Real-time synchronization for complaints added locally in citizen portal
+    const handleComplaintAdded = (e) => {
+      const newComplaint = e.detail;
+      if (newComplaint) {
+        setComplaints((prev) => {
+          const exists = prev.some((c) => c.tracking_id === newComplaint.tracking_id);
+          if (exists) return prev;
+          return enrichWithPriority([newComplaint, ...prev]);
+        });
+      }
+    };
+    window.addEventListener('v2a_complaint_added', handleComplaintAdded);
+
+    return () => {
+      unsubscribe();
+      window.removeEventListener('v2a_complaint_added', handleComplaintAdded);
+    };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   return { complaints, loading, error, seeding };

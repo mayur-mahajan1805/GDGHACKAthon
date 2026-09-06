@@ -65,11 +65,18 @@ export async function createCitizenComplaint(formData) {
     // Backup in local storage for local resilience
     try {
       const local = JSON.parse(localStorage.getItem('v2a_citizen_complaints') || '[]');
-      local.push({ ...complaintDoc, created_at: new Date(), updated_at: new Date() });
+      local.unshift({ ...complaintDoc, created_at: new Date(), updated_at: new Date() });
       localStorage.setItem('v2a_citizen_complaints', JSON.stringify(local));
     } catch (e) {
       console.warn('LocalStorage backup failed:', e);
     }
+  }
+
+  // Dispatch custom event so official dashboard in same browser syncs in real-time
+  try {
+    window.dispatchEvent(new CustomEvent('v2a_complaint_added', { detail: complaintDoc }));
+  } catch (e) {
+    // ignore in non-browser env
   }
 
   return {

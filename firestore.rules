@@ -1,0 +1,24 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Complaints collection
+    match /complaints/{complaintId} {
+      // Allow anyone (citizens) to read and submit new complaints
+      allow read, create: if true;
+      
+      // Allow updates and deletes (officials status changes, assignments)
+      allow update, delete: if true;
+    }
+    
+    // Officials profiles collection
+    match /officials/{officialId} {
+      allow read, write: if true;
+    }
+    
+    // General fallback for hackathon development
+    match /{document=**} {
+      allow read, write: if true;
+    }
+  }
+}
