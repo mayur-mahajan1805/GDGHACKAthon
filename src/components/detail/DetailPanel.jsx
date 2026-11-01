@@ -12,6 +12,9 @@ import {
   CheckCircle2,
   Loader2,
   ChevronRight,
+  Building2,
+  User,
+  Clock,
 } from 'lucide-react';
 import { db } from '../../firebase';
 import { CategoryBadge } from '../shared/CategoryBadge';
@@ -20,6 +23,7 @@ import { PriorityBar } from '../shared/PriorityBar';
 
 const STATUS_FLOW = ['new', 'assigned', 'in_progress', 'resolved'];
 
+// ── Helpers ────────────────────────────────────────────────────────────────────
 function safeFormatDate(val, formatStr = 'PPpp') {
   if (!val) return '—';
   let dateObj = null;
@@ -32,13 +36,8 @@ function safeFormatDate(val, formatStr = 'PPpp') {
   } else if (val?.seconds) {
     dateObj = new Date(val.seconds * 1000);
   }
-
   if (!dateObj || isNaN(dateObj.getTime())) return '—';
-  try {
-    return format(dateObj, formatStr);
-  } catch (e) {
-    return '—';
-  }
+  try { return format(dateObj, formatStr); } catch (e) { return '—'; }
 }
 
 function safeFormatRelative(val) {
@@ -53,15 +52,39 @@ function safeFormatRelative(val) {
   } else if (val?.seconds) {
     dateObj = new Date(val.seconds * 1000);
   }
-
   if (!dateObj || isNaN(dateObj.getTime())) return '—';
-  try {
-    return formatDistanceToNow(dateObj, { addSuffix: true });
-  } catch (e) {
-    return '—';
-  }
+  try { return formatDistanceToNow(dateObj, { addSuffix: true }); } catch (e) { return '—'; }
 }
 
+// ── SLA Countdown Badge ───────────────────────────────────────────────────────
+function SlaBadge({ slaDeadline }) {
+  const deadline = slaDeadline ? new Date(slaDeadline) : null;
+  if (!deadline || isNaN(deadline.getTime())) return null;
+  const msLeft = deadline.getTime() - Date.now();
+  const hoursLeft = msLeft / (1000 * 60 * 60);
+
+  if (hoursLeft < 0) {
+    return (
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-900/40 border border-red-500/50 text-red-400 text-[10px] font-bold">
+        <Clock size={9}/> SLA BREACHED
+      </span>
+    );
+  }
+  if (hoursLeft < 6) {
+    return (
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-900/40 border border-amber-500/50 text-amber-400 text-[10px] font-semibold">
+        <Clock size={9}/> {Math.round(hoursLeft)}h remaining
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-800/60 border border-slate-700/50 text-slate-400 text-[10px]">
+      <Clock size={9}/> {Math.round(hoursLeft)}h SLA
+    </span>
+  );
+}
+
+// ── Status step indicator ─────────────────────────────────────────────────────
 function StatusStep({ status, current }) {
   const config = getStatusConfig(status);
   const idx = STATUS_FLOW.indexOf(status);
@@ -90,10 +113,12 @@ function StatusStep({ status, current }) {
   );
 }
 
+// ── Main Component ────────────────────────────────────────────────────────────
 export function DetailPanel({ complaint, onClose }) {
-  const [updating, setUpdating] = useState(false);
-  const [note, setNote] = useState('');
-  const [error, setError] = useState(null);
+  const [updating, setUpdating]     = useState(false);
+  const [note, setNote]             = useState('');
+  const [assignedTo, setAssignedTo] = useState(complaint.assigned_to || '');
+  const [error, setError]           = useState(null);
   const [successMsg, setSuccessMsg] = useState(null);
 
   if (!complaint) return null;
@@ -107,10 +132,21 @@ export function DetailPanel({ complaint, onClose }) {
     setError(null);
     setSuccessMsg(null);
     try {
+      const historyEntry = {
+        status: newStatus,
+        timestamp: new Date().toISOString(),
+        by: assignedTo.trim() || 'official',
+        note: note.trim() || '',
+      };
       await updateDoc(doc(db, 'complaints', complaint.id), {
         status: newStatus,
         updated_at: Timestamp.now(),
+        assigned_to: assignedTo.trim() || complaint.assigned_to || null,
         ...(note.trim() ? { official_note: note.trim() } : {}),
+        status_history: [
+          ...(complaint.status_history || []),
+          historyEntry,
+        ],
       });
       setSuccessMsg(`Status updated to "${getStatusConfig(newStatus).label}"`);
       setNote('');
@@ -146,6 +182,7 @@ export function DetailPanel({ complaint, onClose }) {
 
       {/* Scrollable content */}
       <div className="flex-1 overflow-y-auto divide-y divide-slate-700/30">
+
         {/* Meta row */}
         <div className="px-4 py-3 flex flex-wrap gap-3">
           <CategoryBadge category={complaint.category} size="sm" />
@@ -160,6 +197,24 @@ export function DetailPanel({ complaint, onClose }) {
             </span>
           </div>
         </div>
+
+        {/* Department & SLA row */}
+        {(complaint.department || complaint.sla_deadline) && (
+          <div className="px-4 py-2.5 flex flex-wrap gap-2 items-center bg-blue-950/20">
+            {complaint.department && (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-900/30 border border-blue-500/30 text-blue-300 text-xs font-medium">
+                <Building2 size={11}/>
+                {complaint.department}
+              </span>
+            )}
+            <SlaBadge slaDeadline={complaint.sla_deadline} />
+            {complaint.assigned_to && (
+              <span className="inline-flex items-center gap-1 text-slate-400 text-xs">
+                <User size={10}/> {complaint.assigned_to}
+              </span>
+            )}
+          </div>
+        )}
 
         {/* Description */}
         <div className="px-4 py-3">
@@ -177,13 +232,11 @@ export function DetailPanel({ complaint, onClose }) {
               <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Photo Evidence</p>
               {complaint.photo_verified ? (
                 <span className="flex items-center gap-1 text-xs text-green-400">
-                  <ShieldCheck size={12} />
-                  Verified
+                  <ShieldCheck size={12} /> Verified
                 </span>
               ) : (
                 <span className="flex items-center gap-1 text-xs text-amber-400">
-                  <ShieldAlert size={12} />
-                  Unverified
+                  <ShieldAlert size={12} /> Unverified
                 </span>
               )}
             </div>
@@ -235,14 +288,25 @@ export function DetailPanel({ complaint, onClose }) {
             ))}
           </div>
 
-          {/* Optional note */}
-          <textarea
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            placeholder="Optional note about this status change…"
-            rows={2}
-            className="w-full bg-slate-800 border border-slate-600/50 rounded-lg px-3 py-2 text-xs text-slate-300 placeholder-slate-600 resize-none focus:outline-none focus:border-blue-500 transition-colors mb-3"
-          />
+          {/* Officer assignment + note */}
+          <div className="space-y-2 mb-3">
+            <div className="relative">
+              <User size={11} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none"/>
+              <input
+                value={assignedTo}
+                onChange={(e) => setAssignedTo(e.target.value)}
+                placeholder="Assign to officer (e.g. Eng. Sharma, JE Patel)"
+                className="w-full bg-slate-800 border border-slate-600/50 rounded-lg pl-8 pr-3 py-2 text-xs text-slate-300 placeholder-slate-600 focus:outline-none focus:border-blue-500 transition-colors"
+              />
+            </div>
+            <textarea
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder="Official notes (e.g. Repair team dispatched under Supv. Sharma, ETA 4h)…"
+              rows={2}
+              className="w-full bg-slate-800 border border-slate-600/50 rounded-lg px-3 py-2 text-xs text-slate-300 placeholder-slate-600 resize-none focus:outline-none focus:border-blue-500 transition-colors"
+            />
+          </div>
 
           {/* Advance button */}
           {nextStatus ? (
@@ -261,9 +325,7 @@ export function DetailPanel({ complaint, onClose }) {
               {updating ? (
                 <Loader2 size={14} className="animate-spin" />
               ) : (
-                <>
-                  Mark as <strong>{nextConfig?.label}</strong>
-                </>
+                <>Mark as <strong>{nextConfig?.label}</strong></>
               )}
             </button>
           ) : (
@@ -309,6 +371,33 @@ export function DetailPanel({ complaint, onClose }) {
             </p>
           )}
         </div>
+
+        {/* Status history timeline */}
+        {complaint.status_history?.length > 0 && (
+          <div className="px-4 py-3">
+            <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-3">Activity Log</p>
+            <div className="space-y-2">
+              {[...complaint.status_history].reverse().map((entry, i) => {
+                const cfg = getStatusConfig(entry.status);
+                return (
+                  <div key={i} className="flex gap-2.5">
+                    <div className={`w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0 ${cfg.dot ?? 'bg-slate-500'}`}/>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <span className={`text-[10px] font-semibold ${cfg.text ?? 'text-slate-300'}`}>{cfg.label}</span>
+                        {entry.by && <span className="text-[10px] text-slate-500">by {entry.by}</span>}
+                      </div>
+                      {entry.note && <p className="text-[10px] text-slate-400 mt-0.5">{entry.note}</p>}
+                      <p className="text-[9px] text-slate-600 mt-0.5">
+                        {entry.timestamp ? new Date(entry.timestamp).toLocaleString('en-IN') : ''}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Coordinates */}
         <div className="px-4 py-3">

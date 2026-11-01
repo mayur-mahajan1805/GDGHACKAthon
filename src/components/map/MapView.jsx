@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { GoogleMap, useJsApiLoader, OverlayView } from '@react-google-maps/api';
+import { GoogleMap, useJsApiLoader, OverlayView, OverlayViewF } from '@react-google-maps/api';
 import { MapPin, Loader2, AlertTriangle, Map as MapIcon, Compass, ShieldAlert } from 'lucide-react';
 import { getPriorityTier } from '../../utils/priorityScore';
 import { getCategoryConfig } from '../shared/CategoryBadge';
@@ -121,7 +121,7 @@ export function MapView({ complaints, totalCount = 0, selectedComplaint, onSelec
   const defaultCenter = { lat: 28.6139, lng: 77.209 };
 
   const valid = complaints.filter(
-    c => typeof c.lat === 'number' && typeof c.lng === 'number'
+    c => typeof c.lat === 'number' && !isNaN(c.lat) && typeof c.lng === 'number' && !isNaN(c.lng)
   );
 
   // Reset fit only when the actual complaint IDs change (not on every render)
@@ -131,23 +131,28 @@ export function MapView({ complaints, totalCount = 0, selectedComplaint, onSelec
     fittedRef.current  = false;
   }
 
-  // Fit bounds once the map is idle and we haven't fitted this set yet
-  const handleIdle = useCallback(() => {
+  useEffect(() => {
     if (!map || fittedRef.current || valid.length === 0) return;
     if (!window.google?.maps) return;
+    
     fittedRef.current = true;
-
     const bounds = new window.google.maps.LatLngBounds();
     valid.forEach(c => bounds.extend({ lat: c.lat, lng: c.lng }));
-    map.fitBounds(bounds, { top: 60, bottom: 40, left: 40, right: 40 });
 
-    if (valid.length === 1) {
-      window.google.maps.event.addListenerOnce(map, 'bounds_changed', () => {
-        if (map.getZoom() > 15) map.setZoom(15);
-      });
+    // Check if the bounds represent a single point (i.e. all markers have exact same coordinates)
+    const ne = bounds.getNorthEast();
+    const sw = bounds.getSouthWest();
+    const isSinglePoint = ne.equals(sw);
+
+    if (isSinglePoint || valid.length === 1) {
+      // If it's a single point, fitBounds often bugs out. Just pan and zoom directly.
+      map.panTo({ lat: ne.lat(), lng: ne.lng() });
+      map.setZoom(15);
+    } else {
+      // Normal bounds fitting for spread out markers
+      map.fitBounds(bounds, { top: 60, bottom: 40, left: 40, right: 40 });
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [map, currentIds]);
+  }, [map, currentIds, valid]);
 
   // Pan to selected marker without resetting bounds
   useEffect(() => {
@@ -288,10 +293,9 @@ export function MapView({ complaints, totalCount = 0, selectedComplaint, onSelec
         options={MAP_OPTIONS}
         onLoad={onLoad}
         onUnmount={onUnmount}
-        onIdle={handleIdle}
       >
         {valid.map(complaint => (
-          <OverlayView
+          <OverlayViewF
             key={complaint.id}
             position={{ lat: complaint.lat, lng: complaint.lng }}
             mapPaneName={OverlayView.OVERLAY_MOUSE_TARGET}
@@ -302,7 +306,7 @@ export function MapView({ complaints, totalCount = 0, selectedComplaint, onSelec
               isSelected={selectedComplaint?.id === complaint.id}
               onClick={onSelectComplaint}
             />
-          </OverlayView>
+          </OverlayViewF>
         ))}
       </GoogleMap>
 

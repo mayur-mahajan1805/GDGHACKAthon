@@ -1,10 +1,9 @@
 import { Timestamp } from 'firebase/firestore';
+import { getDepartmentForCategory } from './complaintService';
 
 /**
  * 12 varied sample complaints across 5 wards and all 7 categories.
  * Seeded when the complaints collection is empty on first dashboard load.
- *
- * Lat/Lng centered around a demo city (New Delhi area — adjust for your city).
  * Photo URLs are null for simplicity; real citizen app will populate them.
  */
 
@@ -14,7 +13,29 @@ function daysAgo(n) {
   return Timestamp.fromDate(d);
 }
 
-export const SAMPLE_COMPLAINTS = [
+function slaDeadlineFromDaysAgo(n, category) {
+  const created = new Date();
+  created.setDate(created.getDate() - n);
+  const dept = getDepartmentForCategory(category);
+  return new Date(created.getTime() + dept.sla_hours * 60 * 60 * 1000).toISOString();
+}
+
+function enrichSeed(complaint) {
+  const dept = getDepartmentForCategory(complaint.category);
+  return {
+    ...complaint,
+    department: dept.name,
+    sla_hours: dept.sla_hours,
+    sla_deadline: slaDeadlineFromDaysAgo(0, complaint.category),
+    assigned_to: null,
+    official_note: '',
+    status_history: [{ status: complaint.status, timestamp: new Date().toISOString(), by: 'system', note: 'Seeded data' }],
+    citizen_name: complaint.citizen_name || 'Demo Citizen',
+    citizen_phone: complaint.citizen_phone || '',
+  };
+}
+
+const RAW_COMPLAINTS = [
   {
     text: 'Large pothole on main road near community center causing accidents. Several two-wheelers have skidded.',
     language: 'en',
@@ -208,3 +229,5 @@ export const SAMPLE_COMPLAINTS = [
     updated_at: daysAgo(0),
   },
 ];
+
+export const SAMPLE_COMPLAINTS = RAW_COMPLAINTS.map(enrichSeed);

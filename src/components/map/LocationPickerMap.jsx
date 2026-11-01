@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
-import { GoogleMap, useJsApiLoader, Marker } from '@react-google-maps/api';
+import { GoogleMap, useJsApiLoader, MarkerF } from '@react-google-maps/api';
 import { MapPin, Crosshair, Loader2, Navigation, Compass } from 'lucide-react';
 import { WARD_COORDINATES } from '../../utils/wardCoordinates';
 
@@ -156,7 +156,7 @@ export function LocationPickerMap({ lat, lng, ward, onChangeLocation }) {
           onLoad={setMap}
           onClick={handleMapClick}
         >
-          <Marker
+          <MarkerF
             position={currentPos}
             draggable={true}
             onDragEnd={handleMarkerDragEnd}

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { SlidersHorizontal, X, Search, Building2, ChevronDown, ChevronUp } from 'lucide-react';
+import { SlidersHorizontal, X, Search, Building2, ChevronDown, ChevronUp, Landmark } from 'lucide-react';
 import { ALL_CATEGORIES, getCategoryConfig } from '../shared/CategoryBadge';
 import { ALL_STATUSES, getStatusConfig } from '../shared/StatusBadge';
 
@@ -7,6 +7,7 @@ export const DEFAULT_FILTERS = {
   search: '',
   ward: '',
   category: '',
+  department: '',
   statuses: [...ALL_STATUSES],
   minPriority: 0,
   myJurisdictionOnly: false,
@@ -25,11 +26,13 @@ export function applyFilters(complaints, filters) {
         !c.text?.toLowerCase().includes(q) &&
         !c.summary?.toLowerCase().includes(q) &&
         !c.ward?.toLowerCase().includes(q) &&
-        !c.category?.toLowerCase().includes(q)
+        !c.category?.toLowerCase().includes(q) &&
+        !c.department?.toLowerCase().includes(q)
       ) return false;
     }
     if (wardFilter && c.ward !== wardFilter) return false;
     if (filters.category && filters.category !== 'general' && c.category !== filters.category) return false;
+    if (filters.department && c.department !== filters.department) return false;
     if (!filters.statuses.includes(c.status)) return false;
     if ((c.priority_score ?? 0) < filters.minPriority) return false;
     return true;
@@ -60,11 +63,12 @@ function Section({ title, children, defaultOpen = true }) {
   );
 }
 
-export function FilterSidebar({ filters, onChange, wards, officialProfile, complaintCounts }) {
+export function FilterSidebar({ filters, onChange, wards, departments = [], officialProfile, complaintCounts }) {
   const hasActiveFilters =
     filters.search !== '' ||
     filters.ward !== '' ||
     filters.category !== '' ||
+    filters.department !== '' ||
     filters.statuses.length < ALL_STATUSES.length ||
     filters.minPriority > 0 ||
     filters.myJurisdictionOnly;
@@ -179,6 +183,39 @@ export function FilterSidebar({ filters, onChange, wards, officialProfile, compl
             {wards.map(w => <option key={w} value={w}>{w}</option>)}
           </select>
         </Section>
+
+        {/* Department */}
+        {departments.length > 0 && (
+          <Section title="Department">
+            <div className="space-y-1">
+              <button
+                type="button"
+                onClick={() => onChange({ ...filters, department: '', myJurisdictionOnly: false })}
+                className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-all text-left ${
+                  !filters.department ? 'bg-slate-700 text-white border-slate-600' : 'bg-slate-900 text-slate-400 border-slate-800 hover:border-slate-700'
+                }`}
+              >
+                <Landmark size={11} className="text-slate-400"/>
+                All Departments
+              </button>
+              {departments.map(dept => (
+                <button
+                  key={dept}
+                  type="button"
+                  onClick={() => onChange({ ...filters, department: filters.department === dept ? '' : dept, myJurisdictionOnly: false })}
+                  className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-all text-left ${
+                    filters.department === dept
+                      ? 'bg-blue-600/20 text-blue-200 border-blue-500/50'
+                      : 'bg-slate-900 text-slate-400 border-slate-800 hover:border-slate-700 hover:text-slate-200'
+                  }`}
+                >
+                  <Building2 size={11} className="flex-shrink-0"/>
+                  <span className="truncate">{dept}</span>
+                </button>
+              ))}
+            </div>
+          </Section>
+        )}
 
         {/* Category */}
         <Section title="Category">

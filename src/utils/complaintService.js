@@ -3,6 +3,25 @@ import { doc, setDoc, getDoc, serverTimestamp, collection, getDocs, query, where
 import { signInAnonymously } from 'firebase/auth';
 
 /**
+ * Department Auto-Routing Matrix
+ * Maps complaint category → Government Department + SLA + Priority Weight
+ * Mirrors real Indian municipal governance structure.
+ */
+export const CATEGORY_TO_DEPARTMENT = {
+  road:        { name: 'PWD – Public Works Dept',          sla_hours: 48,  priority_weight: 50, icon: '🛣️'  },
+  water:       { name: 'Jal Board',                        sla_hours: 24,  priority_weight: 75, icon: '💧'  },
+  electricity: { name: 'DISCOM – Electricity Board',       sla_hours: 12,  priority_weight: 90, icon: '⚡'  },
+  waste:       { name: 'Solid Waste Management',           sla_hours: 24,  priority_weight: 45, icon: '🗑️' },
+  health:      { name: 'Municipal Health Dept',            sla_hours: 6,   priority_weight: 85, icon: '🏥'  },
+  education:   { name: 'District Education Office',        sla_hours: 72,  priority_weight: 40, icon: '🏫'  },
+  other:       { name: 'General Administration',           sla_hours: 48,  priority_weight: 30, icon: '🏛️' },
+};
+
+export function getDepartmentForCategory(category) {
+  return CATEGORY_TO_DEPARTMENT[category] ?? CATEGORY_TO_DEPARTMENT['other'];
+}
+
+/**
  * Generates a clean tracking ID e.g. V2A-8492
  */
 export function generateTrackingId() {
@@ -29,7 +48,11 @@ async function ensureAuth() {
 export async function createCitizenComplaint(formData) {
   await ensureAuth();
   const trackingId = generateTrackingId();
-  
+
+  // Auto-route to department based on category
+  const deptInfo = getDepartmentForCategory(formData.category);
+  const slaDeadline = new Date(Date.now() + deptInfo.sla_hours * 60 * 60 * 1000);
+
   const complaintDoc = {
     tracking_id: trackingId,
     text: formData.text || '',
@@ -46,6 +69,20 @@ export async function createCitizenComplaint(formData) {
     language: formData.language || 'en',
     citizen_name: formData.citizen_name || 'Anonymous Citizen',
     citizen_phone: formData.citizen_phone || '',
+    // Department Auto-Routing fields
+    department: deptInfo.name,
+    sla_hours: deptInfo.sla_hours,
+    sla_deadline: slaDeadline.toISOString(),
+    assigned_to: null,
+    official_note: '',
+    status_history: [
+      {
+        status: 'new',
+        timestamp: new Date().toISOString(),
+        by: 'system',
+        note: 'Complaint auto-routed to ' + deptInfo.name,
+      }
+    ],
     created_at: serverTimestamp(),
     updated_at: serverTimestamp(),
     uid: auth.currentUser?.uid || 'anonymous',
